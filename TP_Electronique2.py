@@ -23,43 +23,37 @@ st.sidebar.markdown("---")
 if 'mesures' not in st.session_state:
     st.session_state.mesures = []
 
-# --- FONCTION GÉNÉRATION PDF MISE À JOUR ---
+# --- FONCTION GÉNÉRATION PDF AVEC FORMULES VISIBLES ---
 def generer_pdf(mode, r_val, c_val, fc_val, df):
     pdf = FPDF()
     pdf.add_page()
     
-    # Titre principal
+    # 1. Titre
     pdf.set_font("Arial", 'B', 16)
     pdf.cell(200, 10, "RAPPORT DE TP : FILTRES DU 1ER ORDRE", ln=True, align='C')
     pdf.ln(10)
 
-    # I. Étude Théorique
+    # 2. Paramètres du circuit
     pdf.set_font("Arial", 'B', 12)
-    pdf.cell(200, 10, "I. ETUDE THEORIQUE", ln=True)
+    pdf.cell(200, 10, "I. PARAMETRES ET FORMULES THEORIQUES", ln=True)
     pdf.set_font("Arial", size=10)
-    
-    # Paramètres
-    theorie = f"Circuit : {mode}\nResistance : {r_val} Ohms\nCondensateur : {c_val*1e6:.2f} uF\nFrequence de coupure (Fc) : {fc_val:.2f} Hz"
-    pdf.multi_cell(0, 5, theorie)
+    pdf.cell(0, 7, f"Type de filtre : {mode}", ln=True)
+    pdf.cell(0, 7, f"Resistance (R) : {r_val} Ohms | Condensateur (C) : {c_val*1e6:.2f} uF", ln=True)
+    pdf.cell(0, 7, f"Fréquence de coupure calculee (Fc) : {fc_val:.2f} Hz", ln=True)
     pdf.ln(5)
 
-    # Ajout des formules de Gain et Phase
-    pdf.set_font("Arial", 'B', 11)
-    pdf.cell(200, 8, "Formules utilisees :", ln=True)
-    pdf.set_font("Arial", size=10)
-    
+    # 3. Insertion explicite des formules
+    pdf.set_font("Arial", 'I', 11)
     if "Bas" in mode:
-        formule_g = "Gain (dB) = 20 * log10( 1 / sqrt(1 + (f/fc)^2) )"
-        formule_p = "Phase (deg) = -arctan( f/fc ) * (180/pi)"
+        pdf.cell(0, 8, "Formule du Gain : G(dB) = 20 * log10( 1 / sqrt(1 + (f/fc)^2) )", ln=True)
+        pdf.cell(0, 8, "Formule de la Phase : Phi(deg) = -arctan( f/fc ) * (180/pi)", ln=True)
     else:
-        formule_g = "Gain (dB) = 20 * log10( (f/fc) / sqrt(1 + (f/fc)^2) )"
-        formule_p = "Phase (deg) = (90 - arctan( f/fc ) * (180/pi))"
-        
-    pdf.cell(0, 5, formule_g, ln=True)
-    pdf.cell(0, 5, formule_p, ln=True)
+        pdf.cell(0, 8, "Formule du Gain : G(dB) = 20 * log10( (f/fc) / sqrt(1 + (f/fc)^2) )", ln=True)
+        pdf.cell(0, 8, "Formule de la Phase : Phi(deg) = 90 - (arctan( f/fc ) * (180/pi))", ln=True)
+    
     pdf.ln(10)
 
-    # Graphique pour le PDF
+    # 4. Graphique
     f_th = np.logspace(0, 6, 500)
     tau = r_val * c_val
     omega_th = 2 * np.pi * f_th
@@ -83,7 +77,8 @@ def generer_pdf(mode, r_val, c_val, fc_val, df):
     plt.savefig(img_path, format='png')
     plt.close()
     
-    pdf.image(img_path, x=10, y=95, w=180) # Ajusté y pour laisser place aux formules
+    # On place l'image un peu plus bas pour ne pas écraser les formules
+    pdf.image(img_path, x=10, y=90, w=180) 
     
     output_str = pdf.output(dest='S')
     
@@ -94,10 +89,9 @@ def generer_pdf(mode, r_val, c_val, fc_val, df):
         return output_str.encode('latin-1')
     return output_str
 
-# --- INTERFACE PRINCIPALE ---
+# --- LE RESTE DU CODE (INTERFACE) RESTE INCHANGÉ ---
 st.title("⚡ Laboratoire Virtuel d'Électronique")
 
-# --- PARAMÈTRES ---
 st.sidebar.header("⚙️ Configuration")
 mode = st.sidebar.selectbox("Type de Filtre", ["Passe-Bas (RC)", "Passe-Haut (CR)"])
 R = st.sidebar.number_input("R (Ohms)", value=1000, step=100)
@@ -111,7 +105,6 @@ if st.sidebar.button("🗑️ Réinitialiser les mesures"):
     st.session_state.mesures = []
     st.rerun()
 
-# --- ONGLETS ---
 tabs = st.tabs(["📚 THÉORIE", "🖥️ OSCILLOSCOPE", "📊 BODE & RAPPORT"])
 
 with tabs[0]:
@@ -130,48 +123,36 @@ with tabs[0]:
 with tabs[1]:
     st.header("Générateur de fonctions & Oscilloscope")
     f_in = st.number_input("Fréquence du GBF (Hz)", min_value=0.1, value=float(np.round(fc)), step=1.0)
-    
     w_in = 2 * np.pi * f_in
     H_in = 1/(1+1j*w_in*tau_val) if "Bas" in mode else (1j*w_in*tau_val)/(1+1j*w_in*tau_val)
-    
     t = np.linspace(0, 2/f_in if f_in > 0 else 1, 1000)
     ve = np.sin(w_in * t)
     vs = np.abs(H_in) * np.sin(w_in * t + np.angle(H_in))
-    
     fig_scope = go.Figure()
     fig_scope.add_trace(go.Scatter(x=t*1e3, y=ve, name="Entrée Ve (V)", line=dict(color='yellow')))
     fig_scope.add_trace(go.Scatter(x=t*1e3, y=vs, name="Sortie Vs (V)", line=dict(color='cyan')))
     fig_scope.update_layout(template="plotly_dark", xaxis_title="Temps (ms)", yaxis_title="Tension (V)", height=400)
     st.plotly_chart(fig_scope, use_container_width=True)
-    
     if st.button("📥 Enregistrer ce point de mesure"):
-        st.session_state.mesures.append({
-            "f": f_in, 
-            "g": 20*np.log10(np.abs(H_in) + 1e-12), 
-            "p": np.degrees(np.angle(H_in))
-        })
+        st.session_state.mesures.append({"f": f_in, "g": 20*np.log10(np.abs(H_in) + 1e-12), "p": np.degrees(np.angle(H_in))})
         st.success(f"Point à {f_in} Hz enregistré !")
 
 with tabs[2]:
     st.header("Diagramme de Bode")
     if st.session_state.mesures:
         df = pd.DataFrame(st.session_state.mesures).sort_values("f")
-        
         col1, col2 = st.columns(2)
         with col1:
             fg = go.Figure()
             fg.add_trace(go.Scatter(x=df["f"], y=df["g"], mode='markers+lines', name="Mesures", marker=dict(color='red')))
             fg.update_layout(title="Gain (dB)", xaxis_type="log", height=400)
             st.plotly_chart(fg, use_container_width=True)
-        
         with col2:
             fp = go.Figure()
             fp.add_trace(go.Scatter(x=df["f"], y=df["p"], mode='markers+lines', name="Phase (Deg)", marker=dict(color='cyan')))
             fp.update_layout(title="Phase (Deg)", xaxis_type="log", height=400)
             st.plotly_chart(fp, use_container_width=True)
-        
         st.table(df)
-        
         try:
             pdf_bytes = generer_pdf(mode, R, C_uF*1e-6, fc, df)
             st.download_button("💾 Télécharger le Rapport PDF", pdf_bytes, "Rapport_TP.pdf")
