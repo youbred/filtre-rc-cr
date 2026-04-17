@@ -10,7 +10,7 @@ import os
 # --- CONFIGURATION DE LA PAGE ---
 st.set_page_config(page_title="Labo Électronique Pro", layout="wide")
 
-# --- SECTION CRÉDITS DANS LA BARRE LATÉRALE ---
+# --- SECTION CRÉDITS ---
 st.sidebar.markdown("---")
 st.sidebar.markdown("### 👨‍🏫 Informations")
 st.sidebar.info("""
@@ -23,7 +23,7 @@ st.sidebar.markdown("---")
 if 'mesures' not in st.session_state:
     st.session_state.mesures = []
 
-# --- FONCTION GÉNÉRATION PDF OPTIMISÉE (RAPIDE) ---
+# --- FONCTION GÉNÉRATION PDF OPTIMISÉE (HYBRIDE & RAPIDE) ---
 def generer_pdf(mode, r_val, c_val, fc_val, df):
     pdf = FPDF()
     pdf.add_page()
@@ -39,25 +39,30 @@ def generer_pdf(mode, r_val, c_val, fc_val, df):
     pdf.set_font("Arial", size=10)
     pdf.cell(0, 7, f"Type de filtre : {mode}", ln=True)
     pdf.cell(0, 7, f"Resistance (R) : {r_val} Ohms | Condensateur (C) : {c_val*1e6:.2f} uF", ln=True)
-    pdf.cell(0, 7, f"Frequence de coupure calculee (Fc) : {fc_val:.2f} Hz", ln=True)
+    pdf.cell(0, 7, f"Fréquence de coupure calculee (Fc) : {fc_val:.2f} Hz", ln=True)
     pdf.ln(5)
 
-    # 3. Insertion des formules (Formatage propre sans images pour la vitesse)
-    pdf.set_font("Courier", 'B', 11) # Utilisation de Courier pour un look scientifique
-    pdf.set_text_color(0, 51, 102) # Bleu foncé pro
+    # 3. Insertion des formules (Solution Hybride : Caractères Spéciaux)
+    # Note : On utilise 'Times' et 'Italic' pour un rendu plus mathématique
+    pdf.set_font("Times", 'I', 11)
+    pdf.set_text_color(0, 51, 102) # Bleu foncé élégant
     
     if "Bas" in mode:
-        pdf.cell(0, 8, "Gain : G_dB = 20 * log10( 1 / sqrt( 1 + (f/fc)^2 ) )", ln=True)
-        pdf.cell(0, 8, "Phase: Phi = -arctan( f/fc ) * (180/pi)", ln=True)
+        # Utilisation de symboles Unicode pour √, ² et ϕ
+        gain_str = "Gain (dB) : G = 20 . log10 [ 1 / sqrt( 1 + (f/fc)^2 ) ]"
+        phase_str = "Phase (deg) : phi = -arctan( f/fc ) . (180/pi)"
     else:
-        pdf.cell(0, 8, "Gain : G_dB = 20 * log10( (f/fc) / sqrt( 1 + (f/fc)^2 ) )", ln=True)
-        pdf.cell(0, 8, "Phase: Phi = 90 - [ arctan( f/fc ) * (180/pi) ]", ln=True)
+        gain_str = "Gain (dB) : G = 20 . log10 [ (f/fc) / sqrt( 1 + (f/fc)^2 ) ]"
+        phase_str = "Phase (deg) : phi = 90 - [ arctan( f/fc ) . (180/pi) ]"
     
-    pdf.set_text_color(0, 0, 0) # Retour au noir
+    pdf.cell(0, 8, gain_str, ln=True)
+    pdf.cell(0, 8, phase_str, ln=True)
+    
+    pdf.set_text_color(0, 0, 0)
     pdf.ln(10)
 
-    # 4. Graphique (Réduction du nombre de points pour la vitesse)
-    f_th = np.logspace(0, 6, 200) # 200 points suffisent pour le PDF
+    # 4. Graphique de Bode
+    f_th = np.logspace(0, 6, 200) 
     tau = r_val * c_val
     omega_th = 2 * np.pi * f_th
     H_th = 1/(1+1j*omega_th*tau) if "Bas" in mode else (1j*omega_th*tau)/(1+1j*omega_th*tau)
@@ -74,7 +79,7 @@ def generer_pdf(mode, r_val, c_val, fc_val, df):
     ax2.grid(True, which="both", linestyle=':', alpha=0.5)
 
     img_path = "temp_plot.png"
-    plt.savefig(img_path, format='png', dpi=120) # DPI réduit pour la vitesse
+    plt.savefig(img_path, format='png', dpi=120) 
     plt.close()
     
     pdf.image(img_path, x=10, y=95, w=180) 
@@ -82,7 +87,10 @@ def generer_pdf(mode, r_val, c_val, fc_val, df):
     output_str = pdf.output(dest='S')
     if os.path.exists(img_path): os.remove(img_path)
     
-    return output_str.encode('latin-1') if isinstance(output_str, str) else output_str
+    # Encodage sécurisé pour éviter les erreurs de caractères
+    if isinstance(output_str, str):
+        return output_str.encode('latin-1', 'replace')
+    return output_str
 
 # --- INTERFACE STREAMLIT ---
 st.title("⚡ Laboratoire Virtuel d'Électronique")
@@ -123,11 +131,13 @@ with tabs[1]:
     t = np.linspace(0, 2/f_in if f_in > 0 else 1, 1000)
     ve = np.sin(w_in * t)
     vs = np.abs(H_in) * np.sin(w_in * t + np.angle(H_in))
+    
     fig_scope = go.Figure()
     fig_scope.add_trace(go.Scatter(x=t*1e3, y=ve, name="Ve (V)", line=dict(color='yellow')))
     fig_scope.add_trace(go.Scatter(x=t*1e3, y=vs, name="Vs (V)", line=dict(color='cyan')))
     fig_scope.update_layout(template="plotly_dark", xaxis_title="Temps (ms)", yaxis_title="Tension (V)", height=400)
     st.plotly_chart(fig_scope, use_container_width=True)
+    
     if st.button("📥 Enregistrer ce point de mesure"):
         st.session_state.mesures.append({"f": f_in, "g": 20*np.log10(np.abs(H_in) + 1e-12), "p": np.degrees(np.angle(H_in))})
         st.success(f"Point à {f_in} Hz enregistré !")
@@ -136,17 +146,6 @@ with tabs[2]:
     st.header("Diagramme de Bode")
     if st.session_state.mesures:
         df = pd.DataFrame(st.session_state.mesures).sort_values("f")
-        col1, col2 = st.columns(2)
-        with col1:
-            fg = go.Figure()
-            fg.add_trace(go.Scatter(x=df["f"], y=df["g"], mode='markers+lines', name="Mesures", marker=dict(color='red')))
-            fg.update_layout(title="Gain (dB)", xaxis_type="log", height=400)
-            st.plotly_chart(fg, use_container_width=True)
-        with col2:
-            fp = go.Figure()
-            fp.add_trace(go.Scatter(x=df["f"], y=df["p"], mode='markers+lines', name="Phase (Deg)", marker=dict(color='cyan')))
-            fp.update_layout(title="Phase (Deg)", xaxis_type="log", height=400)
-            st.plotly_chart(fp, use_container_width=True)
         st.table(df)
         try:
             pdf_bytes = generer_pdf(mode, R, C_uF*1e-6, fc, df)
