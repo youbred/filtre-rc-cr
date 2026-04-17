@@ -23,7 +23,7 @@ st.sidebar.markdown("---")
 if 'mesures' not in st.session_state:
     st.session_state.mesures = []
 
-# --- FONCTION GÉNÉRATION PDF CORRIGÉE (AVEC FICHIER TEMP) ---
+# --- FONCTION GÉNÉRATION PDF CORRIGÉE ---
 def generer_pdf(mode, r_val, c_val, fc_val, df):
     pdf = FPDF()
     pdf.add_page()
@@ -40,7 +40,6 @@ def generer_pdf(mode, r_val, c_val, fc_val, df):
     # Graphique pour le PDF
     f_th = np.logspace(0, 6, 500)
     tau = r_val * c_val
-    # Calcul sécurisé pour éviter les divisions par zéro à basse fréquence
     omega_th = 2 * np.pi * f_th
     if "Bas" in mode:
         H_th = 1 / (1 + 1j * omega_th * tau)
@@ -58,19 +57,24 @@ def generer_pdf(mode, r_val, c_val, fc_val, df):
     ax2.set_ylabel('Phase (Deg)')
     ax2.grid(True, which="both")
 
-    # Utilisation d'un fichier temporaire pour éviter l'erreur rfind
-    img_path = "temp_bode.png"
+    # Fichier temp pour l'image
+    img_path = "temp_plot.png"
     plt.savefig(img_path, format='png')
     plt.close()
     
     pdf.image(img_path, x=10, y=80, w=180)
     
-    # Nettoyage du fichier après inclusion
-    output = pdf.output(dest='S')
+    # Génération du flux de sortie avec encodage forcé
+    output_str = pdf.output(dest='S')
+    
+    # Suppression du fichier temp
     if os.path.exists(img_path):
         os.remove(img_path)
-        
-    return bytes(output)
+    
+    # Conversion sécurisée en bytes pour Streamlit
+    if isinstance(output_str, str):
+        return output_str.encode('latin-1')
+    return output_str
 
 # --- INTERFACE PRINCIPALE ---
 st.title("⚡ Laboratoire Virtuel d'Électronique")
@@ -112,7 +116,6 @@ with tabs[1]:
     w_in = 2 * np.pi * f_in
     H_in = 1/(1+1j*w_in*tau_val) if "Bas" in mode else (1j*w_in*tau_val)/(1+1j*w_in*tau_val)
     
-    # Ajustement automatique de la fenêtre temporelle
     t = np.linspace(0, 2/f_in if f_in > 0 else 1, 1000)
     ve = np.sin(w_in * t)
     vs = np.abs(H_in) * np.sin(w_in * t + np.angle(H_in))
