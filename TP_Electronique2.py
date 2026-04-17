@@ -23,20 +23,42 @@ st.sidebar.markdown("---")
 if 'mesures' not in st.session_state:
     st.session_state.mesures = []
 
-# --- FONCTION GÉNÉRATION PDF CORRIGÉE ---
+# --- FONCTION GÉNÉRATION PDF MISE À JOUR ---
 def generer_pdf(mode, r_val, c_val, fc_val, df):
     pdf = FPDF()
     pdf.add_page()
+    
+    # Titre principal
     pdf.set_font("Arial", 'B', 16)
     pdf.cell(200, 10, "RAPPORT DE TP : FILTRES DU 1ER ORDRE", ln=True, align='C')
     pdf.ln(10)
 
+    # I. Étude Théorique
     pdf.set_font("Arial", 'B', 12)
     pdf.cell(200, 10, "I. ETUDE THEORIQUE", ln=True)
     pdf.set_font("Arial", size=10)
-    theorie = f"Circuit : {mode}\nResistance : {r_val} Ohms\nCondensateur : {c_val*1e6:.2f} uF\nFrequence de coupure calculee : {fc_val:.2f} Hz"
-    pdf.multi_cell(0, 5, theorie)
     
+    # Paramètres
+    theorie = f"Circuit : {mode}\nResistance : {r_val} Ohms\nCondensateur : {c_val*1e6:.2f} uF\nFrequence de coupure (Fc) : {fc_val:.2f} Hz"
+    pdf.multi_cell(0, 5, theorie)
+    pdf.ln(5)
+
+    # Ajout des formules de Gain et Phase
+    pdf.set_font("Arial", 'B', 11)
+    pdf.cell(200, 8, "Formules utilisees :", ln=True)
+    pdf.set_font("Arial", size=10)
+    
+    if "Bas" in mode:
+        formule_g = "Gain (dB) = 20 * log10( 1 / sqrt(1 + (f/fc)^2) )"
+        formule_p = "Phase (deg) = -arctan( f/fc ) * (180/pi)"
+    else:
+        formule_g = "Gain (dB) = 20 * log10( (f/fc) / sqrt(1 + (f/fc)^2) )"
+        formule_p = "Phase (deg) = (90 - arctan( f/fc ) * (180/pi))"
+        
+    pdf.cell(0, 5, formule_g, ln=True)
+    pdf.cell(0, 5, formule_p, ln=True)
+    pdf.ln(10)
+
     # Graphique pour le PDF
     f_th = np.logspace(0, 6, 500)
     tau = r_val * c_val
@@ -57,21 +79,17 @@ def generer_pdf(mode, r_val, c_val, fc_val, df):
     ax2.set_ylabel('Phase (Deg)')
     ax2.grid(True, which="both")
 
-    # Fichier temp pour l'image
     img_path = "temp_plot.png"
     plt.savefig(img_path, format='png')
     plt.close()
     
-    pdf.image(img_path, x=10, y=80, w=180)
+    pdf.image(img_path, x=10, y=95, w=180) # Ajusté y pour laisser place aux formules
     
-    # Génération du flux de sortie avec encodage forcé
     output_str = pdf.output(dest='S')
     
-    # Suppression du fichier temp
     if os.path.exists(img_path):
         os.remove(img_path)
     
-    # Conversion sécurisée en bytes pour Streamlit
     if isinstance(output_str, str):
         return output_str.encode('latin-1')
     return output_str
