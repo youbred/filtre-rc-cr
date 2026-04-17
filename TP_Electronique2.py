@@ -7,120 +7,151 @@ import io
 import matplotlib.pyplot as plt
 import os
 
-# --- CONFIGURATION ---
+# --- CONFIGURATION DE LA PAGE ---
 st.set_page_config(page_title="Labo Électronique Pro", layout="wide")
 
-# --- CRÉDITS ---
+# --- SECTION CRÉDITS DANS LA BARRE LATÉRALE ---
+st.sidebar.markdown("---")
 st.sidebar.markdown("### 👨‍🏫 Informations")
-st.sidebar.info("**Youbi Ridha** - Labo GBM")
+st.sidebar.info("""
+**Réalisé par :** Youbi Ridha  
+**Laboratoire :** GBM  
+**Contact :** [youbiridha13@gmail.com](mailto:youbiridha13@gmail.com)
+""")
+st.sidebar.markdown("---")
 
 if 'mesures' not in st.session_state:
     st.session_state.mesures = []
 
-# --- FONCTION DE RENDU RAPIDE ---
-def render_latex_fast(formula, filename):
-    # Taille réduite pour plus de vitesse
-    fig = plt.figure(figsize=(4, 0.6))
-    plt.axis('off')
-    plt.text(0.5, 0.5, formula, size=15, ha='center', va='center')
-    # DPI réduit à 150 pour la vitesse (suffisant pour le PDF)
-    plt.savefig(filename, bbox_inches='tight', transparent=True, dpi=150)
-    plt.close(fig)
-
-# --- GÉNÉRATION DU RAPPORT ---
+# --- FONCTION GÉNÉRATION PDF OPTIMISÉE (RAPIDE) ---
 def generer_pdf(mode, r_val, c_val, fc_val, df):
     pdf = FPDF()
     pdf.add_page()
     
-    # Titre
+    # 1. Titre
     pdf.set_font("Arial", 'B', 16)
     pdf.cell(200, 10, "RAPPORT DE TP : FILTRES DU 1ER ORDRE", ln=True, align='C')
     pdf.ln(10)
 
-    # Paramètres
+    # 2. Paramètres du circuit
     pdf.set_font("Arial", 'B', 12)
-    pdf.cell(200, 10, "I. PARAMETRES ET FORMULES", ln=True)
+    pdf.cell(200, 10, "I. PARAMETRES ET FORMULES THEORIQUES", ln=True)
     pdf.set_font("Arial", size=10)
-    pdf.cell(0, 7, f"Filtre : {mode} | Fc = {fc_val:.2f} Hz", ln=True)
+    pdf.cell(0, 7, f"Type de filtre : {mode}", ln=True)
+    pdf.cell(0, 7, f"Resistance (R) : {r_val} Ohms | Condensateur (C) : {c_val*1e6:.2f} uF", ln=True)
+    pdf.cell(0, 7, f"Frequence de coupure calculee (Fc) : {fc_val:.2f} Hz", ln=True)
     pdf.ln(5)
 
-    # Formules LaTeX
+    # 3. Insertion des formules (Formatage propre sans images pour la vitesse)
+    pdf.set_font("Courier", 'B', 11) # Utilisation de Courier pour un look scientifique
+    pdf.set_text_color(0, 51, 102) # Bleu foncé pro
+    
     if "Bas" in mode:
-        g_tex = r"$G_{dB} = 20 \log_{10} \left( \frac{1}{\sqrt{1 + (f/f_c)^2}} \right)$"
-        p_tex = r"$\phi = -\arctan(f/f_c) \cdot \frac{180}{\pi}$"
+        pdf.cell(0, 8, "Gain : G_dB = 20 * log10( 1 / sqrt( 1 + (f/fc)^2 ) )", ln=True)
+        pdf.cell(0, 8, "Phase: Phi = -arctan( f/fc ) * (180/pi)", ln=True)
     else:
-        g_tex = r"$G_{dB} = 20 \log_{10} \left( \frac{f/f_c}{\sqrt{1 + (f/f_c)^2}} \right)$"
-        p_tex = r"$\phi = 90^\circ - \arctan(f/f_c) \cdot \frac{180}{\pi}$"
+        pdf.cell(0, 8, "Gain : G_dB = 20 * log10( (f/fc) / sqrt( 1 + (f/fc)^2 ) )", ln=True)
+        pdf.cell(0, 8, "Phase: Phi = 90 - [ arctan( f/fc ) * (180/pi) ]", ln=True)
+    
+    pdf.set_text_color(0, 0, 0) # Retour au noir
+    pdf.ln(10)
 
-    render_latex_fast(g_tex, "g.png")
-    render_latex_fast(p_tex, "p.png")
-    pdf.image("g.png", x=15, w=90)
-    pdf.image("p.png", x=15, w=90)
-    pdf.ln(5)
-
-    # Graphique de Bode (Optimisé)
-    f_th = np.logspace(0, 6, 200) # 200 points au lieu de 500 pour aller plus vite
+    # 4. Graphique (Réduction du nombre de points pour la vitesse)
+    f_th = np.logspace(0, 6, 200) # 200 points suffisent pour le PDF
     tau = r_val * c_val
     omega_th = 2 * np.pi * f_th
     H_th = 1/(1+1j*omega_th*tau) if "Bas" in mode else (1j*omega_th*tau)/(1+1j*omega_th*tau)
     
-    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(7, 9))
-    ax1.semilogx(f_th, 20*np.log10(np.abs(H_th) + 1e-12), color='gray', alpha=0.5)
-    ax1.semilogx(df['f'], df['g'], 'ro-')
+    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(8, 10))
+    ax1.semilogx(f_th, 20*np.log10(np.abs(H_th) + 1e-12), color='gray', linestyle='--', alpha=0.6)
+    ax1.semilogx(df['f'], df['g'], 'ro-', linewidth=2)
     ax1.set_ylabel('Gain (dB)')
-    ax1.grid(True, which="both", alpha=0.3)
+    ax1.grid(True, which="both", linestyle=':', alpha=0.5)
     
-    ax2.semilogx(f_th, np.degrees(np.angle(H_th)), color='gray', alpha=0.5)
-    ax2.semilogx(df['f'], df['p'], 'co-')
+    ax2.semilogx(f_th, np.degrees(np.angle(H_th)), color='gray', linestyle='--', alpha=0.6)
+    ax2.semilogx(df['f'], df['p'], 'co-', linewidth=2)
     ax2.set_ylabel('Phase (Deg)')
-    ax2.grid(True, which="both", alpha=0.3)
+    ax2.grid(True, which="both", linestyle=':', alpha=0.5)
 
-    plt.savefig("b.png", dpi=150)
+    img_path = "temp_plot.png"
+    plt.savefig(img_path, format='png', dpi=120) # DPI réduit pour la vitesse
     plt.close()
-    pdf.image("b.png", x=15, y=100, w=170)
     
-    output = pdf.output(dest='S')
+    pdf.image(img_path, x=10, y=95, w=180) 
     
-    # Nettoyage
-    for f in ["g.png", "p.png", "b.png"]:
-        if os.path.exists(f): os.remove(f)
-        
-    return output.encode('latin-1') if isinstance(output, str) else output
-
-# --- INTERFACE ---
-st.title("⚡ Laboratoire Virtuel")
-
-mode = st.sidebar.selectbox("Filtre", ["Passe-Bas (RC)", "Passe-Haut (CR)"])
-R = st.sidebar.number_input("R (Ohms)", value=1000)
-C_uF = st.sidebar.number_input("C (uF)", value=0.1)
-fc = 1 / (2 * np.pi * R * C_uF * 1e-6)
-
-tab1, tab2, tab3 = st.tabs(["📚 Théorie", "🖥️ Scope", "📊 Rapport"])
-
-with tab1:
-    st.latex(r"G_{dB} = 20 \log_{10} \left( |H(j\omega)| \right)")
-
-with tab2:
-    f_in = st.number_input("Fréquence (Hz)", value=float(fc))
-    # Simulation simplifiée
-    t = np.linspace(0, 2/f_in, 500)
-    w = 2*np.pi*f_in
-    tau = R*C_uF*1e-6
-    H = 1/(1+1j*w*tau) if "Bas" in mode else (1j*w*tau)/(1+1j*w*tau)
-    ve, vs = np.sin(w*t), np.abs(H)*np.sin(w*t + np.angle(H))
+    output_str = pdf.output(dest='S')
+    if os.path.exists(img_path): os.remove(img_path)
     
-    fig = go.Figure()
-    fig.add_trace(go.Scatter(x=t, y=ve, name="Ve"))
-    fig.add_trace(go.Scatter(x=t, y=vs, name="Vs"))
-    st.plotly_chart(fig, use_container_width=True)
-    
-    if st.button("Enregistrer"):
-        st.session_state.mesures.append({"f": f_in, "g": 20*np.log10(np.abs(H)+1e-12), "p": np.degrees(np.angle(H))})
+    return output_str.encode('latin-1') if isinstance(output_str, str) else output_str
 
-with tab3:
+# --- INTERFACE STREAMLIT ---
+st.title("⚡ Laboratoire Virtuel d'Électronique")
+
+st.sidebar.header("⚙️ Configuration")
+mode = st.sidebar.selectbox("Type de Filtre", ["Passe-Bas (RC)", "Passe-Haut (CR)"])
+R = st.sidebar.number_input("R (Ohms)", value=1000, step=100)
+C_uF = st.sidebar.number_input("C (uF)", value=0.1, step=0.01)
+
+tau_val = R * (C_uF * 1e-6)
+fc = 1 / (2 * np.pi * tau_val)
+st.sidebar.metric("Fréquence de Coupure (Fc)", f"{fc:.2f} Hz")
+
+if st.sidebar.button("🗑️ Réinitialiser les mesures"):
+    st.session_state.mesures = []
+    st.rerun()
+
+tabs = st.tabs(["📚 THÉORIE", "🖥️ OSCILLOSCOPE", "📊 BODE & RAPPORT"])
+
+with tabs[0]:
+    st.header("Étude Théorique")
+    col_a, col_b = st.columns(2)
+    with col_a:
+        st.write(f"Analyse du filtre **{mode}**")
+        st.latex(r"f_c = \frac{1}{2\pi RC}")
+        st.info(f"Pour vos composants : Fc = {fc:.2f} Hz")
+    with col_b:
+        if "Bas" in mode:
+            st.latex(r"G_{dB} = 20 \log_{10} \left( \frac{1}{\sqrt{1 + (f/f_c)^2}} \right)")
+        else:
+            st.latex(r"G_{dB} = 20 \log_{10} \left( \frac{f/f_c}{\sqrt{1 + (f/f_c)^2}} \right)")
+
+with tabs[1]:
+    st.header("Générateur de fonctions & Oscilloscope")
+    f_in = st.number_input("Fréquence du GBF (Hz)", min_value=0.1, value=float(np.round(fc)), step=1.0)
+    w_in = 2 * np.pi * f_in
+    H_in = 1/(1+1j*w_in*tau_val) if "Bas" in mode else (1j*w_in*tau_val)/(1+1j*w_in*tau_val)
+    t = np.linspace(0, 2/f_in if f_in > 0 else 1, 1000)
+    ve = np.sin(w_in * t)
+    vs = np.abs(H_in) * np.sin(w_in * t + np.angle(H_in))
+    fig_scope = go.Figure()
+    fig_scope.add_trace(go.Scatter(x=t*1e3, y=ve, name="Ve (V)", line=dict(color='yellow')))
+    fig_scope.add_trace(go.Scatter(x=t*1e3, y=vs, name="Vs (V)", line=dict(color='cyan')))
+    fig_scope.update_layout(template="plotly_dark", xaxis_title="Temps (ms)", yaxis_title="Tension (V)", height=400)
+    st.plotly_chart(fig_scope, use_container_width=True)
+    if st.button("📥 Enregistrer ce point de mesure"):
+        st.session_state.mesures.append({"f": f_in, "g": 20*np.log10(np.abs(H_in) + 1e-12), "p": np.degrees(np.angle(H_in))})
+        st.success(f"Point à {f_in} Hz enregistré !")
+
+with tabs[2]:
+    st.header("Diagramme de Bode")
     if st.session_state.mesures:
         df = pd.DataFrame(st.session_state.mesures).sort_values("f")
+        col1, col2 = st.columns(2)
+        with col1:
+            fg = go.Figure()
+            fg.add_trace(go.Scatter(x=df["f"], y=df["g"], mode='markers+lines', name="Mesures", marker=dict(color='red')))
+            fg.update_layout(title="Gain (dB)", xaxis_type="log", height=400)
+            st.plotly_chart(fg, use_container_width=True)
+        with col2:
+            fp = go.Figure()
+            fp.add_trace(go.Scatter(x=df["f"], y=df["p"], mode='markers+lines', name="Phase (Deg)", marker=dict(color='cyan')))
+            fp.update_layout(title="Phase (Deg)", xaxis_type="log", height=400)
+            st.plotly_chart(fp, use_container_width=True)
         st.table(df)
-        if st.button("Générer le PDF"):
+        try:
             pdf_bytes = generer_pdf(mode, R, C_uF*1e-6, fc, df)
-            st.download_button("💾 Télécharger", pdf_bytes, "Rapport.pdf")
+            st.download_button("💾 Télécharger le Rapport PDF", pdf_bytes, "Rapport_TP.pdf")
+        except Exception as e:
+            st.error(f"Erreur PDF : {e}")
+    else:
+        st.warning("Aucune mesure enregistrée.")
